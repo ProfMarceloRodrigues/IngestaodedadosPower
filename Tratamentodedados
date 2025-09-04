@@ -1,0 +1,43 @@
+# 1. Importar bibliotecas
+import pandas as pd
+import requests
+from pyspark.sql import SparkSession
+
+# 2. Criar sessão Spark (no Fabric, geralmente já está disponível como 'spark')
+spark = SparkSession.builder.getOrCreate()
+
+# 3. Definir URL do Excel no GitHub (formato RAW)
+excel_url = "https://github.com/ProfMarceloRodrigues/IngestaodedadosPower/raw/main/base_eventos.xlsx"
+
+# 4. Baixar o arquivo para um caminho temporário
+local_path = "/tmp/base_eventos.xlsx"
+with open(local_path, "wb") as f:
+    f.write(requests.get(excel_url).content)
+
+# 5. Ler o Excel com pandas
+df_pd = pd.read_excel(local_path)
+
+# 6. Converter para Spark DataFrame
+df_spark = spark.createDataFrame(df_pd)
+
+# 7. Exibir os dados para confirmar
+display(df_spark)
+
+import re
+
+# Função para limpar nomes de colunas
+def limpar_nome(coluna):
+    # Substitui espaços por underline
+    coluna = coluna.replace(" ", "_")
+    # Remove acentos comuns
+    coluna = coluna.replace("ã", "a").replace("ç", "c").replace("é", "e").replace("á", "a").replace("ó", "o")
+    # Remove qualquer caractere especial que não seja letra, número ou underline
+    coluna = re.sub(r"[^\w]", "", coluna)
+    return coluna
+
+# Aplicar limpeza em todas as colunas
+colunas_limpa = [limpar_nome(col) for col in df_spark.columns]
+df_spark_clean = df_spark.toDF(*colunas_limpa)
+
+# Salvar como tabela no Lakehouse
+df_spark_clean.write.mode("overwrite").saveAsTable("eventos_base")
